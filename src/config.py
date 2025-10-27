@@ -50,7 +50,9 @@ class Config:
         
         # 日志和数据目录
         self.log_file = os.getenv('LOG_FILE', 'poetry-camera.log')
+        self.log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
         self.data_dir = os.getenv('DATA_DIR', 'data')
+        self.poem_archive_dir = os.getenv('POEM_ARCHIVE_DIR', 'poems')
         
         # 相机配置
         self.camera_width = int(os.getenv('CAMERA_WIDTH', '1920'))
@@ -70,6 +72,7 @@ class Config:
         (data_path / 'images').mkdir(exist_ok=True)
         (data_path / 'uploads').mkdir(exist_ok=True)
         (data_path / 'processed').mkdir(exist_ok=True)
+        (self.project_root / self.poem_archive_dir).mkdir(exist_ok=True, parents=True)
     
     def validate(self) -> tuple[bool, list[str]]:
         """
@@ -107,6 +110,11 @@ class Config:
     def log_path(self) -> Path:
         """日志文件路径"""
         return self.project_root / self.log_file
+
+    @property
+    def poems_dir(self) -> Path:
+        """诗歌归档目录"""
+        return self.project_root / self.poem_archive_dir
     
     def __repr__(self):
         return f"<Config project_root={self.project_root}>"

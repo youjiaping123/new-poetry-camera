@@ -1,0 +1,28 @@
+[Unit]
+Description=Poetry Camera
+Wants=network-online.target
+After=network-online.target systemd-udevd.service dev-serial0.device
+
+[Service]
+Type=simple
+User=pi
+# 修改为你的项目路径
+WorkingDirectory=/home/pi/projects/new-poetry-camera
+Environment=PYTHONUNBUFFERED=1
+Environment=LANG=zh_CN.UTF-8
+Environment=LC_ALL=zh_CN.UTF-8
+# 等待串口稳定，减少开机串口噪声导致的异常
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 20); do [ -e /dev/serial0 ] && exit 0; sleep 1; done; exit 1'
+ExecStart=/home/pi/projects/new-poetry-camera/venv/bin/python /home/pi/projects/new-poetry-camera/main.py
+# 优雅停止时让打印机休眠，避免关机过程打印乱码
+ExecStop=/home/pi/projects/new-poetry-camera/venv/bin/python /home/pi/projects/new-poetry-camera/scripts/shutdown_printer.py
+Restart=on-failure
+RestartSec=3
+# 让停止脚本有时间执行完成
+TimeoutStopSec=10
+# 直接写入 systemd 日志，便于 journalctl 实时查看
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -2,6 +2,7 @@
 热敏打印机控制模块
 支持通用热敏打印机（ESC/POS 协议）
 """
+import logging
 import serial
 import time
 from typing import Optional
@@ -17,14 +18,15 @@ class ThermalPrinter:
     GS = b'\x1d'
     
     def __init__(self):
+        self.logger = logging.getLogger(__name__)
         self.serial: Optional[serial.Serial] = None
         self.initialized = False
     
     def initialize(self) -> bool:
         """初始化打印机"""
         try:
-            print(f"尝试连接串口: {config.serial_port}")
-            print(f"波特率: {config.printer_baud}")
+            self.logger.info("尝试连接串口: %s", config.serial_port)
+            self.logger.info("波特率: %s", config.printer_baud)
             
             self.serial = serial.Serial(
                 port=config.serial_port,
@@ -34,12 +36,13 @@ class ThermalPrinter:
                 stopbits=serial.STOPBITS_ONE,
                 timeout=3,
                 xonxoff=False,
-                rtscts=False
+                rtscts=False,
+                dsrdtr=False
             )
             
             time.sleep(0.5)  # 等待串口稳定
             
-            print("发送初始化命令...")
+            self.logger.debug("发送初始化命令")
             
             # 清空缓冲区
             self.serial.reset_input_buffer()
@@ -60,15 +63,17 @@ class ThermalPrinter:
             
             # 设置行间距
             self._write(self.ESC + b'\x33' + bytes([50]))
-            
+
             self.initialized = True
-            print("✓ 打印机初始化完成")
+
+            # 确保清除任何待打印的数据
+            self.cancel_print()
+            
+            self.logger.info("打印机初始化完成")
             return True
             
         except Exception as e:
-            print(f"打印机初始化失败: {e}")
-            import traceback
-            traceback.print_exc()
+            self.logger.exception("打印机初始化失败: %s", e)
             return False
     
     def _write(self, data: bytes):
@@ -89,11 +94,11 @@ class ThermalPrinter:
             align: 对齐方式 ('left', 'center', 'right')
         """
         if not self.initialized or not self.serial:
-            print("❌ 打印机未初始化")
+            self.logger.error("打印机未初始化")
             return
         
         try:
-            print(f"准备打印文本 ({len(text)} 字符)...")
+            self.logger.debug("准备打印文本，长度 %s", len(text))
             
             # 设置对齐方式
             align_commands = {
@@ -114,9 +119,12 @@ class ThermalPrinter:
                 self._write(self.GS + b'!' + bytes([0]))
             
             # 打印文本（按行发送）
-            lines = text.strip().split('\n')
+            if not text:
+                return
+
+            lines = text.split('\n')
             for i, line in enumerate(lines):
-                print(f"  发送第 {i+1}/{len(lines)} 行: {line[:30]}...")
+                self.logger.debug("发送第 %s/%s 行", i + 1, len(lines))
                 # 编码为 GB18030（支持中文）或 UTF-8
                 try:
                     encoded = line.encode('gb18030')
@@ -128,15 +136,13 @@ class ThermalPrinter:
                 time.sleep(0.05)  # 给打印机处理时间
             
             # 走纸1行留空隙
-            print("发送走纸命令...")
+            self.logger.debug("发送走纸命令")
             self.feed(1)
             
-            print("✓ 文本发送完成")
+            self.logger.debug("文本发送完成")
             
         except Exception as e:
-            print(f"❌ 打印失败: {e}")
-            import traceback
-            traceback.print_exc()
+            self.logger.exception("打印失败: %s", e)
     
     def feed(self, lines: int = 1):
         """走纸"""
@@ -158,14 +164,36 @@ class ThermalPrinter:
             # GS V m - 切纸命令
             self._write(self.GS + b'V' + bytes([66, 0]))  # 全切
             time.sleep(0.5)
-        except Exception as e:
-            print(f"切纸失败（打印机可能不支持）: {e}")
-    
-    def print_image(self, image_path: str):
-        """打印图像（简化版本）"""
-        print("⚠️  图像打印功能待实现")
-        # 这需要将图像转换为位图格式
-        # 暂时跳过
+        except Exception:
+            self.logger.exception("切纸失败（打印机可能不支持）")
+
+    def cancel_print(self):
+        """发送取消打印命令并清空缓冲"""
+        if not self.serial:
+            return
+
+        try:
+            # CAN - 取消打印
+            self._write(b'\x18')
+            time.sleep(0.1)
+            self.serial.reset_input_buffer()
+            self.serial.reset_output_buffer()
+            self.logger.debug("打印缓冲区已清空")
+        except Exception:
+            self.logger.exception("清空打印缓冲失败")
+
+    def enter_sleep_mode(self):
+        """让打印机进入休眠，防止关机时串口噪声触发"""
+        if not self.serial:
+            return
+
+        try:
+            # ESC 8 - 进入休眠（大部分ESC/POS兼容）
+            self._write(self.ESC + b'8')
+            time.sleep(0.1)
+            self.logger.debug("打印机进入休眠模式")
+        except Exception:
+            self.logger.exception("打印机休眠命令发送失败")
     
     def set_chinese_mode(self):
         """设置中文模式"""
@@ -178,10 +206,10 @@ class ThermalPrinter:
     def test_print(self):
         """打印测试页"""
         if not self.initialized:
-            print("❌ 打印机未初始化")
+            self.logger.error("打印机未初始化")
             return
         
-        print("\n开始打印测试页...")
+        self.logger.info("开始打印测试页")
         
         # 打印标题
         self.print_text("=== 打印机测试 ===", font_size=2, align='center')
@@ -202,52 +230,42 @@ class ThermalPrinter:
         # 走纸
         self.feed(5)
         
-        print("✓ 测试页打印完成")
+        self.logger.info("测试页打印完成")
     
     def print_poem(self, poem: str):
-        """
-        打印诗歌（带头部和脚注）
-        
-        Args:
-            poem: 诗歌文本
-        """
+        """打印诗歌（带头部和脚注）"""
         if not self.initialized:
-            print("❌ 打印机未初始化")
+            self.logger.error("打印机未初始化")
             return
-        
+
         try:
-            print("\n开始打印诗歌...")
-            
-            # 打印头部（日期和装饰线）
+            self.logger.info("开始打印诗歌")
             header = format_header()
             self.print_text(header, align='left')
-            
-            # 打印诗歌正文
-            self.print_text(poem, align='left')
-            
-            # 打印脚注
+
+            wrapped_poem = wrap_text(poem)
+            self.print_text(wrapped_poem, align='left')
+
             footer = format_footer()
             self.print_text(footer, align='left')
-            
-            # 额外走纸便于撕纸（只走2行）
+
             self.feed(2)
-            
-            print("✓ 诗歌打印完成")
-            
-        except Exception as e:
-            print(f"❌ 打印诗歌失败: {e}")
-            import traceback
-            traceback.print_exc()
-    
+            self.logger.info("诗歌打印完成")
+        except Exception as exc:
+            self.logger.exception("打印诗歌失败: %s", exc)
+
     def close(self):
         """关闭打印机连接"""
         if self.serial and self.serial.is_open:
             try:
-                # 不额外走纸，避免多余空白
+                # 进入休眠，避免关机/开机串口噪声导致乱码
+                self.enter_sleep_mode()
+                # 确保无待处理数据
+                self.cancel_print()
                 time.sleep(0.3)
                 self.serial.close()
-                print("✓ 串口已关闭")
-            except Exception as e:
-                print(f"关闭串口时出错: {e}")
-        
+                self.logger.info("串口已关闭")
+            except Exception:
+                self.logger.exception("关闭串口时出错")
+
         self.initialized = False

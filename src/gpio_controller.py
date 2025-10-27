@@ -73,7 +73,7 @@ class GPIOController:
             按钮是否被按下
         """
         if not self._initialized:
-            print("[错误] is_button_pressed: GPIO未初始化")
+            self.logger.error("GPIO未初始化，无法读取按钮状态")
             return False
         
         try:

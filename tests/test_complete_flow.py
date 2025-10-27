@@ -3,6 +3,7 @@
 完整流程测试 - 模拟按钮触发完整流程
 （不等待真实按钮，直接测试一次完整流程）
 """
+import logging
 import sys
 from pathlib import Path
 
@@ -14,6 +15,12 @@ from src.config import config
 from src.camera import Camera
 from src.printer import ThermalPrinter
 from src.ai_service import AIService
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+)
 
 
 def test_complete_flow():
@@ -74,19 +81,19 @@ def test_complete_flow():
         print("\n6. AI处理图像...")
         print("   (这可能需要一些时间...)")
         
-        poem = ai_service.process_image_to_poem(image_path)
-        if not poem:
+        result = ai_service.process_image_to_poem(image_path)
+        if not result:
             print("❌ 诗歌生成失败")
             return False
         
         print("✅ 诗歌生成成功:")
         print("\n" + "─" * 40)
-        print(poem)
+        print(result.poem)
         print("─" * 40 + "\n")
         
         # 7. 打印
         print("7. 打印诗歌...")
-        printer.print_poem(poem)
+        printer.print_poem(result.poem)
         print("✅ 打印完成")
         
         print("\n" + "=" * 60)

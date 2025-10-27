@@ -6,6 +6,7 @@
 """
 import sys
 import logging
+from logging.handlers import RotatingFileHandler
 import signal
 import time
 from pathlib import Path
@@ -19,6 +20,7 @@ from src.camera import Camera
 from src.printer import ThermalPrinter
 from src.ai_service import AIService
 from src.gpio_controller import GPIOController
+from src.archive import PoemArchive
 
 
 class PoetryCamera:
@@ -33,6 +35,7 @@ class PoetryCamera:
         self.printer = ThermalPrinter()
         self.ai_service = AIService()
         self.gpio = GPIOController(enable_led=False)  # 禁用LED
+        self.archive = PoemArchive()
         
         # 运行标志
         self.running = True
@@ -43,14 +46,30 @@ class PoetryCamera:
     
     def setup_logging(self):
         """配置日志"""
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(config.log_path),
-                logging.StreamHandler(sys.stdout)
-            ]
+        log_level = getattr(logging, config.log_level, logging.INFO)
+        formatter = logging.Formatter(
+            "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
         )
+
+        config.log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        file_handler = RotatingFileHandler(
+            config.log_path,
+            maxBytes=1_048_576,
+            backupCount=3,
+            encoding="utf-8"
+        )
+        file_handler.setFormatter(formatter)
+
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setFormatter(formatter)
+
+        root = logging.getLogger()
+        root.handlers.clear()
+        root.setLevel(log_level)
+        root.addHandler(file_handler)
+        root.addHandler(stream_handler)
     
     def _signal_handler(self, signum, frame):
         """信号处理器"""
@@ -92,6 +111,8 @@ class PoetryCamera:
             return False
         
         self.logger.info("所有组件初始化成功")
+        self.logger.info("日志输出到: %s", config.log_path)
+        self.logger.info("诗歌归档目录: %s", config.poems_dir)
         
         return True
     
@@ -111,17 +132,30 @@ class PoetryCamera:
             self.logger.info("正在处理图像...")
             
             # 生成诗歌
-            poem = self.ai_service.process_image_to_poem(image_path)
-            if not poem:
+            result = self.ai_service.process_image_to_poem(image_path)
+            if not result:
                 self.logger.error("❌ 诗歌生成失败")
                 return
             
             self.logger.info("✓ 诗歌生成成功")
-            self.logger.info(f"\n{poem}\n")
+            self.logger.info("图像描述: %s", result.caption)
+            self.logger.info("生成的诗歌:\n%s", result.poem)
             
             # 打印诗歌
             self.logger.info("开始打印...")
-            self.printer.print_poem(poem)
+            self.printer.print_poem(result.poem)
+
+            archived = self.archive.save(
+                poem=result.poem,
+                caption=result.caption,
+                image_path=image_path
+            )
+            if archived:
+                self.logger.info(
+                    "记录已归档 -> poem: %s, image: %s",
+                    archived.poem_path.name,
+                    archived.image_path.name
+                )
             
             self.logger.info("✓ 流程完成")
             self.logger.info("=" * 50)

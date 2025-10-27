@@ -2,6 +2,7 @@
 """
 测试打印机功能
 """
+import logging
 import sys
 import time
 from pathlib import Path
@@ -11,6 +12,12 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.printer import ThermalPrinter
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+)
 
 
 def main():

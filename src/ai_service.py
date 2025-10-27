@@ -4,6 +4,7 @@ AI服务模块
 封装图像识别和诗歌生成API调用
 """
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 import httpx
@@ -11,6 +12,13 @@ import replicate
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 from .config import config
+
+
+@dataclass
+class PoemResult:
+    """AI生成结果"""
+    caption: str
+    poem: str
 
 
 class AIService:
@@ -143,7 +151,7 @@ class AIService:
             self.logger.error(f"诗歌生成失败: {e}", exc_info=True)
             return None
     
-    def process_image_to_poem(self, image_path: Path) -> Optional[str]:
+    def process_image_to_poem(self, image_path: Path) -> Optional[PoemResult]:
         """
         完整流程：图像 -> 描述 -> 诗歌
         
@@ -165,4 +173,4 @@ class AIService:
             self.logger.error("无法生成诗歌")
             return None
         
-        return poem
+        return PoemResult(caption=caption, poem=poem)

@@ -9,6 +9,7 @@
 - 🤖 使用 AI (BLIP-2 + DeepSeek) 理解图像内容
 - ✍️ 根据图像生成优美的中文诗歌
 - 🖨️ 用热敏打印机打印诗歌
+- 🗂️ 自动归档每次拍摄和生成的诗歌
 
 ![Poetry Camera Demo](https://via.placeholder.com/800x400?text=Poetry+Camera+Demo)
 
@@ -123,6 +124,37 @@ source venv/bin/activate
 # 运行主程序
 python main.py
 ```
+## 🔁 开机自启动与日志
+
+项目附带了 systemd 单元模板与安装脚本，推荐使用 systemd 管理：
+
+1) 安装服务（在树莓派上执行）
+
+```bash
+cd /home/pi/projects/new-poetry-camera
+sudo bash scripts/install_service.sh
+```
+
+2) 常用命令
+
+```bash
+# 查看实时日志（建议）
+sudo journalctl -fu poetry-camera.service
+
+# 查看上一轮启动的历史日志
+sudo journalctl -b -1 -u poetry-camera.service
+
+# 查看服务状态 / 启停
+sudo systemctl status poetry-camera.service
+sudo systemctl restart poetry-camera.service
+sudo systemctl stop poetry-camera.service
+```
+
+说明：
+- 服务文件位于 `systemd/poetry-camera.service`，默认日志输出至 systemd journal，可用 `journalctl` 实时查看。
+- 如果你更习惯文件日志，程序本身也会写入 `poetry-camera.log`（滚动）。
+- 关机或服务停止时会调用 `scripts/shutdown_printer.py`，主动让打印机休眠，避免关机过程出现乱码。
+
 
 ### 操作说明
 
@@ -130,7 +162,16 @@ python main.py
 - **长按按钮(2秒)**：安全退出程序
 - **Ctrl+C**：强制退出
 
-## 📁 项目结构
+## �️ 诗歌归档
+
+每次成功生成并打印的诗歌都会自动写入 `poems/` 目录：
+
+- `poems/poem_<timestamp>.txt` 保存打印的诗歌内容
+- `poems/poems.jsonl` 记录文本、图像路径与生成时间便于后续检索
+
+你可以根据需要同步或备份该目录，用于构建线上作品集或调试数据。
+
+## �📁 项目结构
 
 ```
 poetry-camera/
@@ -164,6 +205,10 @@ poetry-camera/
 | `REPLICATE_API_TOKEN` | Replicate API令牌 | 必填 |
 | `SERIAL_PORT` | 打印机串口 | `/dev/serial0` |
 | `PRINTER_BAUD` | 打印机波特率 | `9600` |
+| `LOG_FILE` | 日志文件位置 | `poetry-camera.log` |
+| `LOG_LEVEL` | 日志级别 (`DEBUG`/`INFO`/...) | `INFO` |
+| `DATA_DIR` | 数据目录（图像等） | `data` |
+| `POEM_ARCHIVE_DIR` | 诗歌归档目录 | `poems` |
 | `BUTTON_PIN` | 按钮GPIO引脚(BCM编号) | `17` |
 | `CAMERA_WIDTH` | 相机分辨率宽度 | `1920` |
 | `CAMERA_HEIGHT` | 相机分辨率高度 | `1080` |
